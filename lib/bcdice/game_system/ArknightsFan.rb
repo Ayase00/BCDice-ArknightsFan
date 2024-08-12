@@ -67,7 +67,7 @@ module BCDice
         Status::SUCCESS  => '成功',
         Status::FAILURE  => '失敗',
         Status::ERROR    => 'エラー'
-      }
+      }.freeze
 
       # クリティカル、エラー、成功失敗周りの閾値や優先関係が複雑かつルールが変動する可能性があるため、明示的にルール管理するための関数。
       def check_roll(roll_result, target)
@@ -103,7 +103,7 @@ module BCDice
       def roll_ad(command)
         # -は文字クラスの先頭または最後に置く。
         # そうしないと範囲指定子として解釈される。
-        m = %r{^([-+*/\d]*)AD(\d*)<=([-+*/\d]+)$}.match(command) 
+        m = %r{^([-+*/\d]*)AD(\d*)<=([-+*/\d]+)$}.match(command)
         return nil unless m
 
         times = m[1]
@@ -161,7 +161,13 @@ module BCDice
         dice_list, success_count, critical_count, error_count = process_b(times, sides, target)
         result_count = success_count + critical_count - error_count
 
-        return "(#{command}) ＞ [#{dice_list.join(',')}] ＞ #{success_count}+#{critical_count}C-#{error_count}E ＞ 成功数#{result_count}"
+        result_text = "(#{command}) ＞ [#{dice_list.join(',')}] ＞ #{success_count}+#{critical_count}C-#{error_count}E ＞ 成功数#{result_count}"
+        Result.new.tap do |r|
+          r.text = result_text
+          r.condition = result_count > 0
+          r.critical = critical_count > 0
+          r.fumble = error_count > 0
+        end
       end
 
       def roll_b_withtype(command, times, sides, target, type)
@@ -176,7 +182,14 @@ module BCDice
           end
         result_count += type_effect
 
-        return "(#{command}) ＞ [#{dice_list.join(',')}] ＞ #{success_count}+#{critical_count}C-#{error_count}E+#{type_effect}(#{type}) ＞ 成功数#{result_count}"
+        result_text = "(#{command}) ＞ [#{dice_list.join(',')}] ＞ #{success_count}+#{critical_count}C-#{error_count}E+#{type_effect}(#{type}) ＞ 成功数#{result_count}"
+        Result.new.tap do |r|
+          r.text = result_text
+          r.condition = result_count > 0
+          r.critical = critical_count > 0
+          r.fumble = error_count > 0
+        end
+
       end
 
       def process_b(times, sides, target)
