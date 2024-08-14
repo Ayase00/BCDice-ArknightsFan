@@ -64,9 +64,9 @@ module BCDice
 
       STATUS_NAME = {
         Status::CRITICAL => 'クリティカル！',
-        Status::SUCCESS  => '成功',
-        Status::FAILURE  => '失敗',
-        Status::ERROR    => 'エラー'
+        Status::SUCCESS => '成功',
+        Status::FAILURE => '失敗',
+        Status::ERROR => 'エラー'
       }.freeze
 
       # クリティカル、エラー、成功失敗周りの閾値や優先関係が複雑かつルールが変動する可能性があるため、明示的にルール管理するための関数。
@@ -138,7 +138,7 @@ module BCDice
         dice_list = @randomizer.roll_barabara(times, sides).sort
         total = dice_list.sum
 
-        result = check_roll(roll_result = total, target)
+        result = check_roll(total, target)
 
         if times == 1
           result_text = "(#{command}) ＞ #{dice_list.join(',')} ＞ #{STATUS_NAME[result]}"
@@ -189,7 +189,6 @@ module BCDice
           r.critical = critical_count > 0
           r.fumble = error_count > 0
         end
-
       end
 
       def process_b(times, sides, target)
@@ -200,7 +199,7 @@ module BCDice
         error_count = 0
 
         dice_list.each do |value|
-          case check_roll(roll_result = value, target)
+          case check_roll(value, target)
           when Status::CRITICAL
             critical_count += 1
             success_count += 1
