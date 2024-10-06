@@ -35,6 +35,12 @@ module BCDice
             狙撃（SNI）: 健康(h=0)かつ成功数1以上のとき、成功数+1。
           健康状態hを省略した場合、健康(h=0)として扱われる。
 
+        ■ 鉱石病判定 (ORPx@y+Dd+Tt)
+          x: 生理的耐性、y: 上昇後侵食度、d: ダイス補正、t: 判定値補正
+          生理的耐性xのOPが侵食度yに上昇した際の鉱石病判定を、ダイス数補正d、判定値補正tで行う。
+          ダイス数補正と判定値補正は省略可能。例えば ORP60@25 は ORP60@25+D0+T0 と同義。
+          また、ダイス数補正と判定値補正は逆順でも可。例えば ORP60@25+T10+D2 も可。
+
         ■ 増悪判定（--WORSENING）
           症状を「末梢神経障害」「内臓機能不全」「精神症状」からランダムに選択。
           継続ラウンド数を1d6+1で判定。
@@ -49,10 +55,17 @@ module BCDice
           例えば、AD<=90は1AD100<=90として解釈される。
       TEXT
 
-      register_prefix('[-+*/\d]*AD\d*', '[-+*/\d]*AB\d*', '--ADDICTION', '--WORSENING')
+      register_prefix('[-+*/\d]*AD\d*', '[-+*/\d]*AB\d*', 'ORP', '--ADDICTION', '--WORSENING')
+
+      def initialize(command)
+        super(command)
+        @sort_add_dice = true      # 加算ダイスでダイス目をソートする
+        @sort_barabara_dice = true # バラバラダイスでダイス目をソートする
+        @sides_implicit_d = 100    # 1D のようにダイスの面数が指定されていない場合に100面ダイスにする
+      end
 
       def eval_game_system_specific_command(command)
-        roll_ad(command) || roll_ab(command) || roll_addiction(command) || roll_worsening(command)
+        roll_ad(command) || roll_ab(command) || roll_orp(command) || roll_addiction(command) || roll_worsening(command)
       end
 
       private
@@ -113,7 +126,8 @@ module BCDice
         target = Arithmetic.eval(m[3], @round_type)
         times = !times.empty? ? Arithmetic.eval(m[1], @round_type) : 1
         sides = !sides.empty? ? sides.to_i : 100
-        return roll_d(command, times, sides, target)
+
+        roll_d(command, times, sides, target)
       end
 
       def roll_ab(command)
@@ -140,6 +154,20 @@ module BCDice
         else
           roll_b_withtype(command, times, sides, target, type, type_status)
         end
+      end
+
+      def roll_orp(command)
+        m   = %r{^ORP(?'END'[-+*/\d]+)@(?'ORP'[-+*/\d]+)(?:\+D(?'DICE'[-+*/\d]+))?(?:\+T(?'TGT'[-+*/\d]+))?$}.match(command)
+        # D補正とT補正が逆順でも対応する
+        m ||= %r{^ORP(?'END'[-+*/\d]+)@(?'ORP'[-+*/\d]+)(?:\+T(?'TGT'[-+*/\d]+))?(?:\+D(?'DICE'[-+*/\d]+))?$}.match(command)
+        return nil unless m
+
+        endurance = Arithmetic.eval(m[:END], @round_type)
+        oripathy = Arithmetic.eval(m[:ORP], @round_type)
+        times_mod = !m[3].nil? ? Arithmetic.eval(m[:DICE], @round_type) : 0
+        target_mod = !m[4].nil? ? Arithmetic.eval(m[:TGT], @round_type) : 0
+
+        roll_oripathy(command, endurance, oripathy, times_mod, target_mod)
       end
 
       def roll_d(command, times, sides, target)
@@ -208,6 +236,40 @@ module BCDice
           r.condition = result_count > 0
           r.critical = critical_count > 0
           r.fumble = error_count > 0
+        end
+      end
+
+      ENDURANCE_LEVEL_TABLE = [20, 40, 70, 90, Float::INFINITY].freeze # 生理的耐性の実数値から能力評価への変換テーブル
+      ORP_TIMES_TABLE = [1, 2, 2, 3, 4].freeze                         # 生理的耐性の能力評価ごとのダイス数基本値
+      def roll_oripathy(command, endurance, oripathy, times_mod, target_mod)
+        sides = 100
+
+        endurance_level = ENDURANCE_LEVEL_TABLE.find_index { |n| endurance <= n }
+        original_times = ORP_TIMES_TABLE[endurance_level]
+        times = original_times + times_mod
+
+        oripathy_stage = (oripathy / 20).floor
+        original_target = (80 - oripathy_stage * 20) - (oripathy - oripathy_stage * 20) * 5
+        target = original_target + target_mod
+        dice_and_target_text = "ダイス数#{original_times}" +
+                               (times_mod > 0 ? "+#{times_mod}" : "") +
+                               "、判定値#{original_target}" +
+                               (target_mod > 0 ? "+#{target_mod}" : "")
+        result_texts = ["(#{command})", dice_and_target_text, "#{times}B100<=#{target}"]
+
+        if target <= 0
+          result_texts += ["自動失敗！"]
+          return Result.failure(result_texts.join(" ＞ "))
+        end
+
+        dice_list = @randomizer.roll_barabara(times, sides).sort
+        success_count = dice_list.count { |n| n <= target }
+        if success_count > 0
+          result_texts += ["[#{dice_list.join(',')}]", "成功数#{success_count}", "成功"]
+          Result.success(result_texts.join(" ＞ "))
+        else
+          result_texts += ["[#{dice_list.join(',')}]", "成功数#{success_count}", "失敗"]
+          Result.failure(result_texts.join(" ＞ "))
         end
       end
 
