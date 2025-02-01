@@ -85,6 +85,7 @@ module BCDice
         round = 0
         first_to = command.first_to
         first_modify = command.first_modify
+        first_modify_ssp = command.first_modify_ssp
 
         loop do
           dice_raw, diceText = rollDice(command, round)
@@ -96,6 +97,9 @@ module BCDice
           elsif first_modify != 0
             dice += first_modify
             first_modify = 0
+          elsif first_modify_ssp != 0
+            dice += first_modify_ssp if dice_raw <= 10
+            first_modify_ssp = 0
           end
 
           # 出目がピンゾロの時にはそこで終了
@@ -113,7 +117,7 @@ module BCDice
           dice = 2 if dice < 2
           dice = 12 if dice > 12
 
-          currentKey = [command.rate + round * command.rateup, keyMax].min
+          currentKey = (command.rate + round * command.rateup).clamp(0, keyMax)
           debug("currentKey", currentKey)
           rateValue = newRates[dice][currentKey]
           debug("rateValue", rateValue)
